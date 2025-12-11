@@ -6,7 +6,7 @@ from .common import INDEX_NAME, ensure_index, es, get_model
 
 def keyword_search(query: str, top_k: int = 5, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """BM25 키워드 검색."""
-    ensure_index()
+    ensure_index(model_path)
 
     body = {
         "size": top_k,
@@ -24,7 +24,7 @@ def keyword_search(query: str, top_k: int = 5, model_path: Optional[str] = None)
 
 def embedding_search(query: str, top_k: int = 5, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """코사인 유사도 임베딩 검색."""
-    ensure_index()
+    ensure_index(model_path)
     model = get_model(model_path)
     q_emb = model.encode(query).tolist()
 
@@ -65,7 +65,7 @@ def embedding_search(query: str, top_k: int = 5, model_path: Optional[str] = Non
 
 def hybrid_search(query: str, top_k: int = 5, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """BM25 + 코사인 유사도 하이브리드 검색 (각 필드별 임베딩 고려)."""
-    ensure_index()
+    ensure_index(model_path)
     model = get_model(model_path)
     q_emb = model.encode(query).tolist()
 

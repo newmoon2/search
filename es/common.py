@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 ES_HOST = os.getenv("ES_HOST", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "elastic")
 ES_PASSWORD = os.getenv("ES_PASSWORD", "R=uLP-jzCGGu+vdFDNQE")
-INDEX_NAME = "index_nori"
+INDEX_NAME = "index_nori_1024"
 LOCAL_MODEL_PATH = r"C:\0.project\dev\model\BGE-m3-ko"  # 로컬 임베딩 모델 경로
 DEFAULT_MODEL = LOCAL_MODEL_PATH  # BGE-m3-ko를 기본 모델로 사용
 # VECTOR_DIM은 기본 모델 로드 후 동적으로 설정됨
@@ -96,6 +96,10 @@ def ensure_index(model_path: Optional[str] = None) -> None:
     """인덱스가 없으면 텍스트/임베딩 매핑과 함께 생성.
     모델 경로가 제공되면 해당 모델의 차원을 사용하여 인덱스를 생성/검증.
     """
+
+    
+    
+
     # 사용할 모델의 차원 확인
     model_dim = get_model_dimension(model_path)
     
@@ -108,6 +112,9 @@ def ensure_index(model_path: Optional[str] = None) -> None:
             # 기존 매핑 정보 가져오기
             mapping = es.indices.get_mapping(index=INDEX_NAME)[INDEX_NAME]["mappings"]
             existing_dims = mapping.get("properties", {}).get("embedding", {}).get("dims")
+
+            print(f"VECTOR_DIM: {VECTOR_DIM}")
+            print(f"model_dim: {model_dim}")
             
             # 차원이 일치하지 않으면 에러 발생
             if existing_dims is not None and existing_dims != model_dim:

@@ -20,7 +20,15 @@ def index_text_to_es(texts: Dict[str, str], model_path: Optional[str] = None) ->
     ensure_index(model_path)
 
     # 입력 필드 정규화
-    fields = {key: (texts.get(key) or "").strip() for key in ["text1", "text2", "text3", "text4", "text5"]}
+    text_keys = ["text1", "text2", "text3", "text4", "text5"]
+    fields = {key: (texts.get(key) or "").strip() for key in text_keys}
+    
+    # 텍스트 외 추가 필드 보존 (메타데이터)
+    extra_fields = {
+        key: value
+        for key, value in texts.items()
+        if key not in text_keys
+    }
     non_empty_values = [v for v in fields.values() if v]
     if not non_empty_values:
         raise ValueError("색인할 텍스트가 없습니다.")
@@ -53,7 +61,7 @@ def index_text_to_es(texts: Dict[str, str], model_path: Optional[str] = None) ->
             embeddings[f"embedding{i}"] = field_embedding
     
     doc_id = str(uuid.uuid4())
-    data = {**fields, "text": combined_text, "embedding": embedding, **embeddings}
+    data = {**fields, **extra_fields, "text": combined_text, "embedding": embedding, **embeddings}
 
     try:
         response = es.index(index=INDEX_NAME, id=doc_id, document=data)

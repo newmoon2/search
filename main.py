@@ -231,27 +231,38 @@ def parse_csv_content(content: str) -> List[dict]:
 
 def map_csv_to_texts(csv_row: dict) -> dict:
     """
-    CSV 행을 text1~text5 필드로 매핑.
+    CSV 행을 text1~text5 및 도메인 필드로 매핑.
     
     CSV 필드: 종목, 세부종목, 상품, 증권코드, 증권명, 약관순번, 약관코드, 약관명
+    -> 저장 필드: category_type, sub_category, product, security_code, security_name, clause_seq, clause_code, clause_name
     """
-    # 빈 값 처리
-    종목 = csv_row.get('종목', '').strip()
-    세부종목 = csv_row.get('세부종목', '').strip()
-    상품 = csv_row.get('상품', '').strip()
-    증권코드 = csv_row.get('증권코드', '').strip()
-    증권명 = csv_row.get('증권명', '').strip()
-    약관순번 = csv_row.get('약관순번', '').strip()
-    약관코드 = csv_row.get('약관코드', '').strip()
-    약관명 = csv_row.get('약관명', '').strip()
+    # 빈 값 처리 및 필드명 매핑
+    category_type = csv_row.get("종목", "").strip()
+    sub_category = csv_row.get("세부종목", "").strip()
+    product = csv_row.get("상품", "").strip()
+    security_code = csv_row.get("증권코드", "").strip()
+    security_name = csv_row.get("증권명", "").strip()
+    clause_seq = csv_row.get("약관순번", "").strip()
+    clause_code = csv_row.get("약관코드", "").strip()
+    clause_name = csv_row.get("약관명", "").strip()
     
-    # text1~text5에 매핑
+    # text1~text5에 매핑 + 도메인 필드 함께 저장
     texts = {
-        "text1": f"{종목} {세부종목}".strip(),  # 종목 + 세부종목
-        "text2": 상품,  # 상품
-        "text3": f"{증권코드} {증권명}".strip(),  # 증권코드 + 증권명
-        "text4": f"{약관순번} {약관코드}".strip(),  # 약관순번 + 약관코드
-        "text5": 약관명  # 약관명
+        # 검색/임베딩용 텍스트 필드
+        "text1": f"{category_type} {sub_category}".strip(),  # 종목 + 세부종목
+        "text2": product,  # 상품
+        "text3": f"{security_code} {security_name}".strip(),  # 증권코드 + 증권명
+        "text4": f"{clause_seq} {clause_code}".strip(),  # 약관순번 + 약관코드
+        "text5": clause_name,  # 약관명
+        # 원본 도메인 필드
+        "category_type": category_type,
+        "sub_category": sub_category,
+        "product": product,
+        "security_code": security_code,
+        "security_name": security_name,
+        "clause_seq": clause_seq,
+        "clause_code": clause_code,
+        "clause_name": clause_name,
     }
     return texts
 

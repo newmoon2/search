@@ -13,7 +13,7 @@ def keyword_search(query: str, top_k: int = 5, model_path: Optional[str] = None)
         "query": {
             "multi_match": {
                 "query": query,
-                "fields": ["text", "text1", "text2", "text3", "text4", "text5"],
+                "fields": ["category_type","sub_category","product","security_code","security_name","clause_seq","clause_code","clause_name"],
             }
         },
     }

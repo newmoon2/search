@@ -9,7 +9,8 @@ ES_HOST = os.getenv("ES_HOST", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "elastic")
 ES_PASSWORD = os.getenv("ES_PASSWORD", "R=uLP-jzCGGu+vdFDNQE")
 INDEX_NAME = "index_nori_1024"
-LOCAL_MODEL_PATH = r"C:\0.project\dev\model\BGE-m3-ko"  # 로컬 임베딩 모델 경로
+# LOCAL_MODEL_PATH = r"C:\0.project\dev\model\BGE-m3-ko"  # 로컬 임베딩 모델 경로
+LOCAL_MODEL_PATH = r"C:\project\BGE-m3-ko"  # 로컬 임베딩 모델 경로
 DEFAULT_MODEL = LOCAL_MODEL_PATH  # BGE-m3-ko를 기본 모델로 사용
 # VECTOR_DIM은 기본 모델 로드 후 동적으로 설정됨
 VECTOR_DIM = 1024  # BGE-m3-ko 임베딩 차원 (기본값)
@@ -97,9 +98,6 @@ def ensure_index(model_path: Optional[str] = None) -> None:
     모델 경로가 제공되면 해당 모델의 차원을 사용하여 인덱스를 생성/검증.
     """
 
-    
-    
-
     # 사용할 모델의 차원 확인
     model_dim = get_model_dimension(model_path)
     
@@ -113,8 +111,9 @@ def ensure_index(model_path: Optional[str] = None) -> None:
             mapping = es.indices.get_mapping(index=INDEX_NAME)[INDEX_NAME]["mappings"]
             existing_dims = mapping.get("properties", {}).get("embedding", {}).get("dims")
 
-            print(f"VECTOR_DIM: {VECTOR_DIM}")
-            print(f"model_dim: {model_dim}")
+            # print(f"VECTOR_DIM: {VECTOR_DIM}")
+            # print(f"model_dim: {model_dim}")
+            # print(f"{INDEX_NAME} : 색인 완료..")
             
             # 차원이 일치하지 않으면 에러 발생
             if existing_dims is not None and existing_dims != model_dim:
@@ -138,64 +137,36 @@ def ensure_index(model_path: Optional[str] = None) -> None:
     try:
         settings = {"index": {"knn": True}}
         mappings = {
+            "dynamic_templates": [
+                {
+                    "embedding_fields": {
+                        "match_mapping_type": "string",
+                        "path_match": "*_embedding",
+                        "mapping": {
+                            "type": "dense_vector",
+                            "dims": model_dim,
+                            "index": "true",
+                            "similarity": "cosine"
+                        }
+                    }
+                }
+            ],
             "properties": {
                 "text": {"type": "text"},
-                "text1": {"type": "text"},
-                "text2": {"type": "text"},
-                "text3": {"type": "text"},
-                "text4": {"type": "text"},
-                "text5": {"type": "text"},
                 "embedding": {
                     "type": "dense_vector",
                     "dims": model_dim,
                     "index": True,
                     "similarity": "cosine",
-                },
-                "embedding1": {
-                    "type": "dense_vector",
-                    "dims": model_dim,
-                    "index": True,
-                    "similarity": "cosine",
-                },
-                "embedding2": {
-                    "type": "dense_vector",
-                    "dims": model_dim,
-                    "index": True,
-                    "similarity": "cosine",
-                },
-                "embedding3": {
-                    "type": "dense_vector",
-                    "dims": model_dim,
-                    "index": True,
-                    "similarity": "cosine",
-                },
-                "embedding4": {
-                    "type": "dense_vector",
-                    "dims": model_dim,
-                    "index": True,
-                    "similarity": "cosine",
-                },
-                "embedding5": {
-                    "type": "dense_vector",
-                    "dims": model_dim,
-                    "index": True,
-                    "similarity": "cosine",
-                },
+                }
             }
         }
 
         es.indices.create(index=INDEX_NAME, settings=settings, mappings=mappings)
+        print(f"인덱스 '{INDEX_NAME}'가 생성되었습니다 (벡터 차원: {model_dim}).")
     except Exception as e:
-        # 인덱스 생성 오류를 상세하게 처리
         error_msg = str(e)
-        if "mapper_parsing_exception" in error_msg.lower():
-            raise ValueError(
-                f"인덱스 매핑 생성 중 오류가 발생했습니다: {error_msg}. "
-                f"모델 차원: {model_dim}, 모델 경로: {model_path}. "
-                f"기존 인덱스가 있으면 삭제 후 다시 시도하세요: es.indices.delete(index='{INDEX_NAME}')"
-            ) from e
         raise ValueError(
             f"인덱스 생성 중 오류가 발생했습니다: {error_msg}. "
             f"모델 차원: {model_dim}, 모델 경로: {model_path}"
         ) from e
-

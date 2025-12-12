@@ -4,16 +4,17 @@ import json
 from .common import INDEX_NAME, ensure_index, es, get_model
 
 
-def keyword_search(query: str, top_k: int = 5, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def keyword_search(query: str, top_k: int = 2, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """BM25 키워드 검색."""
     ensure_index(model_path)
 
     body = {
         "size": top_k,
+        "_source": ["category_type", "sub_category", "product", "security_code", "security_name", "clause_seq","clause_code","clause_name"],
         "query": {
             "multi_match": {
                 "query": query,
-                "fields": ["category_type","sub_category","product","security_code","security_name","clause_seq","clause_code","clause_name"],
+                "fields": ["category_type", "sub_category", "product", "security_code", "security_name", "clause_seq","clause_code","clause_name"],
             }
         },
     }
@@ -22,7 +23,7 @@ def keyword_search(query: str, top_k: int = 5, model_path: Optional[str] = None)
     return results["hits"]["hits"], body
 
 
-def embedding_search(query: str, top_k: int = 5, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def embedding_search(query: str, top_k: int = 2, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """코사인 유사도 임베딩 검색."""
     ensure_index(model_path)
     model = get_model(model_path)
@@ -35,23 +36,15 @@ def embedding_search(query: str, top_k: int = 5, model_path: Optional[str] = Non
                 "query": {"match_all": {}},
                 "script": {
                     "source": """
-                        double maxSim = cosineSimilarity(params.query_vector, 'embedding');
-                        if (doc['embedding1'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding1'));
+                        double maxSim = 0.0;
+                        for (key in params._source.keySet()) {
+                            if (key.endsWith('_embedding')) {
+                                if (doc[key].size() > 0) {
+                                    maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, key));
+                                }
+                            }
                         }
-                        if (doc['embedding2'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding2'));
-                        }
-                        if (doc['embedding3'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding3'));
-                        }
-                        if (doc['embedding4'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding4'));
-                        }
-                        if (doc['embedding5'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding5'));
-                        }
-                        return maxSim;
+                        return maxSim + cosineSimilarity(params.query_vector, 'embedding');
                     """,
                     "params": {"query_vector": q_emb},
                 },
@@ -63,7 +56,7 @@ def embedding_search(query: str, top_k: int = 5, model_path: Optional[str] = Non
     return results["hits"]["hits"], body
 
 
-def hybrid_search(query: str, top_k: int = 5, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def hybrid_search(query: str, top_k: int = 2, model_path: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """BM25 + 코사인 유사도 하이브리드 검색 (각 필드별 임베딩 고려)."""
     ensure_index(model_path)
     model = get_model(model_path)
@@ -76,28 +69,20 @@ def hybrid_search(query: str, top_k: int = 5, model_path: Optional[str] = None) 
                 "query": {
                     "multi_match": {
                         "query": query,
-                        "fields": ["text", "text1", "text2", "text3", "text4", "text5"],
+                        "fields": ["category_type", "sub_category", "product", "security_code", "security_name", "clause_seq","clause_code","clause_name"],
                     }
                 },
                 "script": {
                     "source": """
-                        double maxSim = cosineSimilarity(params.query_vector, 'embedding');
-                        if (doc['embedding1'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding1'));
+                        double maxSim = 0.0;
+                        for (key in params._source.keySet()) {
+                            if (key.endsWith('_embedding')) {
+                                if (doc[key].size() > 0) {
+                                    maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, key));
+                                }
+                            }
                         }
-                        if (doc['embedding2'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding2'));
-                        }
-                        if (doc['embedding3'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding3'));
-                        }
-                        if (doc['embedding4'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding4'));
-                        }
-                        if (doc['embedding5'].size() > 0) {
-                            maxSim = Math.max(maxSim, cosineSimilarity(params.query_vector, 'embedding5'));
-                        }
-                        return _score + (2 * maxSim);
+                        return _score + (2 * (maxSim + cosineSimilarity(params.query_vector, 'embedding')));
                     """,
                     "params": {"query_vector": q_emb},
                 },

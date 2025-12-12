@@ -31,7 +31,7 @@ class IndexRequest(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    query: str
+    search_text: str
     search_type: str = "hybrid"
     top_k: int = 5
     model_path: Optional[str] = None
@@ -139,25 +139,35 @@ async def search(req: SearchRequest):
         
         # 검색 타입에 따라 적절한 함수 호출
         if req.search_type == "keyword":
-            hits, query_body = keyword_search(req.query, req.top_k, req.model_path)
+            hits, query_body = keyword_search(req.search_text, req.top_k, req.model_path)
         elif req.search_type == "embedding":
-            hits, query_body = embedding_search(req.query, req.top_k, req.model_path)
+            hits, query_body = embedding_search(req.search_text, req.top_k, req.model_path)
         else:  # hybrid
-            hits, query_body = hybrid_search(req.query, req.top_k, req.model_path)
+            hits, query_body = hybrid_search(req.search_text, req.top_k, req.model_path)
         
         results = [
             {
                 "id": hit.get("_id"),
                 "score": hit.get("_score"),
-                "text": hit["_source"].get("text"),
+                "category_type": hit["_source"].get("category_type"),
+                "sub_category": hit["_source"].get("sub_category"),
+                "product": hit["_source"].get("product"),
+                "security_code": hit["_source"].get("security_code"),
+                "security_name": hit["_source"].get("security_name"),
+                "clause_seq": hit["_source"].get("clause_seq"),
+                "clause_code": hit["_source"].get("clause_code"),
+                "clause_name": hit["_source"].get("clause_name"),
             }
             for hit in hits
         ]
         
         # 쿼리 body를 JSON 문자열로 변환
         query_json = json.dumps(query_body, indent=2, ensure_ascii=False)
+
+        # print(query_json)
         
         return {
+            "success": True,
             "count": len(results),
             "results": results,
             "query": query_json
@@ -248,13 +258,7 @@ def map_csv_to_texts(csv_row: dict) -> dict:
     
     # text1~text5에 매핑 + 도메인 필드 함께 저장
     texts = {
-        # 검색/임베딩용 텍스트 필드
-        "text1": f"{category_type} {sub_category}".strip(),  # 종목 + 세부종목
-        "text2": product,  # 상품
-        "text3": f"{security_code} {security_name}".strip(),  # 증권코드 + 증권명
-        "text4": f"{clause_seq} {clause_code}".strip(),  # 약관순번 + 약관코드
-        "text5": clause_name,  # 약관명
-        # 원본 도메인 필드
+        # 검색 및 임베딩을 위한 조합/개별 필드
         "category_type": category_type,
         "sub_category": sub_category,
         "product": product,
@@ -497,4 +501,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-

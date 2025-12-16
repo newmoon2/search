@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 ES_HOST = os.getenv("ES_HOST", "http://localhost:9200")
 ES_USER = os.getenv("ES_USER", "elastic")
 ES_PASSWORD = os.getenv("ES_PASSWORD", "R=uLP-jzCGGu+vdFDNQE")
-INDEX_NAME = "index_nori_1024"
+INDEX_NAME = "index_nori_terms"
 # LOCAL_MODEL_PATH = r"C:\0.project\dev\model\BGE-m3-ko"  # 로컬 임베딩 모델 경로
 LOCAL_MODEL_PATH = r"C:\project\BGE-m3-ko"  # 로컬 임베딩 모델 경로
 DEFAULT_MODEL = LOCAL_MODEL_PATH  # BGE-m3-ko를 기본 모델로 사용

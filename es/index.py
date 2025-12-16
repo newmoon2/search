@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 from .common import INDEX_NAME, ensure_index, es, get_model
 
 
-def index_text_to_es(texts: Dict[str, str], model_path: Optional[str] = None) -> Dict[str, Any]:
+def index_text_to_es(texts: Dict[str, str], model_path: Optional[str] = None, index: str = "index_nori_terms") -> Dict[str, Any]:
     """다중 텍스트 필드를 하나의 문서로 색인하고 각 필드별 임베딩 생성."""
     from .common import get_model_dimension
     
@@ -52,7 +52,7 @@ def index_text_to_es(texts: Dict[str, str], model_path: Optional[str] = None) ->
         data[embedding_key] = embedding
 
     try:
-        response = es.index(index=INDEX_NAME, id=doc_id, document=data)
+        response = es.index(index=index, id=doc_id, document=data)
         print("색인 완료 > ", doc_id)
         return {"doc_id": doc_id, "result": response}
     except Exception as e:

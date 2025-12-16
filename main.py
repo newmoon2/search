@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from es.index import index_text_to_es
-from es.search import keyword_search, embedding_search, hybrid_search
+from es.search import keyword_search, embedding_search, hybrid_search, answer_keyword_search, answer_embedding_search, answer_hybrid_search
 from es.common import INDEX_NAME, es
 
 app = FastAPI(title="Search API")
@@ -54,17 +54,29 @@ class CsvRowData(BaseModel):
     약관코드: str = ""
     약관명: str = ""
 
-
-class CsvIndexRequest(BaseModel):
-    """CSV 행 데이터를 통한 색인 요청 (단일 행)."""
-    data: CsvRowData
-    model_path: Optional[str] = None
+class CsvRowDataAnswer(BaseModel):
+    """정답지 CSV 행 데이터 구조."""
+    uw_no: str = ""
+    순번: str = ""
+    약관명: str = ""
+    약관코드: str = ""
+    약관형태: str = ""
+    약관형태코드: str = ""
+    적용여부: str = ""
+    증권명: str = ""   
+    증권약관관계: str = ""
+    증권코드: str = ""
 
 
 class CsvBatchIndexRequest(BaseModel):
     """CSV 행 데이터를 통한 색인 요청 (여러 행)."""
     data: List[CsvRowData]
     model_path: Optional[str] = None
+
+class CsvBatchIndexRequestAnswer(BaseModel):
+    """정답지 CSV 행 데이터를 통한 색인 요청 (여러 행)."""
+    data: List[CsvRowDataAnswer]
+    model_path: Optional[str] = None    
 
 
 @app.get("/", response_class=FileResponse)
@@ -144,6 +156,10 @@ async def search(req: SearchRequest):
             hits, query_body = embedding_search(req.search_text, req.top_k, req.model_path)
         else:  # hybrid
             hits, query_body = hybrid_search(req.search_text, req.top_k, req.model_path)
+
+        print(f"search_type : {req.search_type}")
+        print(f"search_text : {req.search_text}")
+        # print(f"search_type : {req.search_type}")
         
         results = [
             {
@@ -164,7 +180,66 @@ async def search(req: SearchRequest):
         # 쿼리 body를 JSON 문자열로 변환
         query_json = json.dumps(query_body, indent=2, ensure_ascii=False)
 
-        # print(query_json)
+        # print(f"count: len({results})")
+        # print(f"results: {results}")
+        
+        return {
+            "success": True,
+            "count": len(results),
+            "results": results,
+            "query": query_json
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/search/answer")
+async def search(req: SearchRequest):
+    """
+    정답지 검색
+    Docstring for search
+    
+    :param req: Description
+    :type req: SearchRequest
+    """
+    try:
+        import json
+        
+        # 검색 타입에 따라 적절한 함수 호출
+        if req.search_type == "keyword":
+            hits, query_body = answer_keyword_search(req.search_text, req.top_k, req.model_path)
+        elif req.search_type == "embedding":
+            hits, query_body = answer_embedding_search(req.search_text, req.top_k, req.model_path)
+        else:  # hybrid
+            hits, query_body = answer_hybrid_search(req.search_text, req.top_k, req.model_path)
+
+        # print(f"search_type : {req.search_type}")
+        # print(f"search_text : {req.search_text}")
+        # print(f"search_type : {req.search_type}")
+        
+        results = [
+            {
+                "id": hit.get("_id"),
+                "score": hit.get("_score"),
+                "uw_no": hit["_source"].get("uw_no"),
+                "order_no": hit["_source"].get("order_no"),
+                "security_name": hit["_source"].get("security_name"),
+                "security_code": hit["_source"].get("security_code"),
+                "tc_name": hit["_source"].get("tc_name"),
+                "tc_code": hit["_source"].get("tc_code"),
+                "use_yn": hit["_source"].get("use_yn"),
+                "tc_relation": hit["_source"].get("tc_relation"),
+                "tc_form": hit["_source"].get("tc_form"),
+                "tc_form_code": hit["_source"].get("tc_form_code"),
+            }
+            for hit in hits
+        ]
+        
+        # 쿼리 body를 JSON 문자열로 변환
+        query_json = json.dumps(query_body, indent=2, ensure_ascii=False)
+
+        # print(f"count: len({results})")
+        # print(f"results: {results}")
         
         return {
             "success": True,
@@ -271,165 +346,43 @@ def map_csv_to_texts(csv_row: dict) -> dict:
     return texts
 
 
-@app.post("/file_index")
-async def index_file(
-    file: UploadFile = File(...),
-    model_path: Optional[str] = Form(None)
-):
-    """파일을 업로드하여 색인. CSV 파일인 경우 각 행을 개별 문서로 색인."""
-    try:
-        # 파일 내용 읽기
-        content = await file.read()
-        
-        # 텍스트 디코딩 (UTF-8 시도, 실패 시 다른 인코딩 시도)
-        try:
-            text_content = content.decode('utf-8-sig')  # BOM 제거를 위해 utf-8-sig 사용
-        except UnicodeDecodeError:
-            try:
-                text_content = content.decode('cp949')  # Windows 한글 인코딩
-            except UnicodeDecodeError:
-                text_content = content.decode('latin-1', errors='ignore')
-        
-        # 파일 확장자 확인
-        filename = file.filename or ""
-        is_csv = filename.lower().endswith('.csv')
-        
-        if is_csv:
-            # CSV 파일 처리: 각 행을 개별 문서로 색인
-            csv_rows = parse_csv_content(text_content)
-            
-            if not csv_rows:
-                raise HTTPException(status_code=400, detail="CSV 파일에 데이터가 없습니다.")
-            
-            results = []
-            for idx, row in enumerate(csv_rows, start=1):
-                try:
-                    texts = map_csv_to_texts(row)
-                    result = index_text_to_es(texts, model_path)
-                    results.append({
-                        "row": idx,
-                        "doc_id": result.get("doc_id"),
-                        "status": "success"
-                    })
-                except Exception as e:
-                    results.append({
-                        "row": idx,
-                        "status": "error",
-                        "error": str(e)
-                    })
-            
-            success_count = sum(1 for r in results if r.get("status") == "success")
-            return {
-                "message": f"CSV 파일 '{filename}' 색인 완료",
-                "filename": filename,
-                "file_size": len(content),
-                "total_rows": len(csv_rows),
-                "success_count": success_count,
-                "error_count": len(csv_rows) - success_count,
-                "results": results
-            }
-        else:
-            # 일반 텍스트 파일 처리
-            texts = {
-                "text1": text_content,
-                "text2": "",
-                "text3": "",
-                "text4": "",
-                "text5": ""
-            }
-            
-            result = index_text_to_es(texts, model_path)
-            return {
-                "message": f"파일 '{filename}' 색인 완료",
-                "filename": filename,
-                "file_size": len(content),
-                **result
-            }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.post("/file_index/path")
-async def index_file_by_path(req: FileIndexRequest):
-    """파일 경로를 통해 파일을 읽어서 색인. CSV 파일인 경우 각 행을 개별 문서로 색인."""
-    try:
-        file_path = Path(req.file_path)
-        
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"파일을 찾을 수 없습니다: {req.file_path}")
-        
-        if not file_path.is_file():
-            raise HTTPException(status_code=400, detail=f"파일이 아닙니다: {req.file_path}")
-        
-        # 파일 읽기 (UTF-8 시도, 실패 시 다른 인코딩 시도)
-        try:
-            text_content = file_path.read_text(encoding='utf-8-sig')  # BOM 제거를 위해 utf-8-sig 사용
-        except UnicodeDecodeError:
-            try:
-                text_content = file_path.read_text(encoding='cp949')  # Windows 한글 인코딩
-            except UnicodeDecodeError:
-                text_content = file_path.read_text(encoding='latin-1', errors='ignore')
-        
-        # 파일 확장자 확인
-        is_csv = file_path.suffix.lower() == '.csv'
-        
-        if is_csv:
-            # CSV 파일 처리: 각 행을 개별 문서로 색인
-            csv_rows = parse_csv_content(text_content)
-            
-            if not csv_rows:
-                raise HTTPException(status_code=400, detail="CSV 파일에 데이터가 없습니다.")
-            
-            results = []
-            for idx, row in enumerate(csv_rows, start=1):
-                try:
-                    texts = map_csv_to_texts(row)
-                    result = index_text_to_es(texts, req.model_path)
-                    results.append({
-                        "row": idx,
-                        "doc_id": result.get("doc_id"),
-                        "status": "success"
-                    })
-                except Exception as e:
-                    results.append({
-                        "row": idx,
-                        "status": "error",
-                        "error": str(e)
-                    })
-            
-            success_count = sum(1 for r in results if r.get("status") == "success")
-            return {
-                "message": f"CSV 파일 '{req.file_path}' 색인 완료",
-                "file_path": str(file_path.absolute()),
-                "file_size": file_path.stat().st_size,
-                "total_rows": len(csv_rows),
-                "success_count": success_count,
-                "error_count": len(csv_rows) - success_count,
-                "results": results
-            }
-        else:
-            # 일반 텍스트 파일 처리
-            texts = {
-                "text1": text_content,
-                "text2": "",
-                "text3": "",
-                "text4": "",
-                "text5": ""
-            }
-            
-            result = index_text_to_es(texts, req.model_path)
-            return {
-                "message": f"파일 '{req.file_path}' 색인 완료",
-                "file_path": str(file_path.absolute()),
-                "file_size": file_path.stat().st_size,
-                **result
-            }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+def map_answer_csv_to_texts(csv_row: dict) -> dict:
+    """
+    CSV 행을 text1~text5 및 도메인 필드로 매핑.
+    
+    CSV 필드: 'uw_no', '순번', '증권명', '증권코드', '약관명', '약관코드', '적용여부', '증권약관관계', '약관형태', '약관형태코드'
+    -> 저장 필드: uw_no(uw_no),순번(order_no),증권명(security_name),증권코드(security_code),약관명(tc_name),약관코드(tc_code),
+    적용여부(use_yn),증권약관관계(tc_relation),약관형태(tc_form),약관형태코드(tc_form_code)
+    """
+    # print(f"csv_row > {csv_row}")
+    # 빈 값 처리 및 필드명 매핑
+    uw_no = csv_row.get("uw_no", "").strip()
+    order_no = csv_row.get("순번", "").strip()
+    security_name = csv_row.get("증권명", "").strip()
+    security_code = csv_row.get("증권코드", "").strip()
+    tc_name = csv_row.get("약관명", "").strip()
+    tc_code = csv_row.get("약관코드", "").strip()
+    use_yn = csv_row.get("적용여부", "").strip()
+    tc_relation = csv_row.get("증권약관관계", "").strip()
+    tc_form = csv_row.get("약관형태", "").strip()
+    tc_form_code = csv_row.get("약관형태코드", "").strip()
+    
+    # text1~text5에 매핑 + 도메인 필드 함께 저장
+    texts = {
+        # 검색 및 임베딩을 위한 조합/개별 필드
+        "uw_no": uw_no,
+        "order_no": order_no,
+        "security_name": security_name,
+        "security_code": security_code,
+        "tc_name": tc_name,
+        "tc_code": tc_code,
+        "use_yn": use_yn,
+        "tc_relation": tc_relation,
+        "tc_form": tc_form,
+        "tc_form_code": tc_form_code,
+    }
+    # print(f"texts : {texts}")
+    return texts
 
 
 @app.post("/csv_index/batch")
@@ -449,7 +402,7 @@ async def index_csv_rows_batch(req: CsvBatchIndexRequest):
                 texts = map_csv_to_texts(csv_row)
                 
                 # 색인 실행
-                result = index_text_to_es(texts, req.model_path)
+                result = index_text_to_es(texts, req.model_path, "index_nori_terms")
                 results.append({
                     "index": idx,
                     "doc_id": result.get("doc_id"),
@@ -476,26 +429,53 @@ async def index_csv_rows_batch(req: CsvBatchIndexRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.post("/csv_index")
-async def index_csv_row(req: CsvIndexRequest):
-    """CSV 행 데이터를 직접 받아서 색인 (단일 행)."""
+@app.post("/csv_index/batch/answer")
+async def index_csv_rows_batch_answer(req: CsvBatchIndexRequestAnswer):
+    """정답지 CSV 행 데이터를 직접 받아서 색인 (여러 행 일괄 처리)."""
     try:
-        # CsvRowData를 딕셔너리로 변환
-        csv_row = req.data.model_dump()
+        if not req.data: 
+            raise HTTPException(status_code=400, detail="데이터가 없습니다.")
         
-        # text1~text5로 매핑
-        texts = map_csv_to_texts(csv_row)
+        # print(f"req > {req}")
+
+        results = []
+        for idx, csv_row_data in enumerate(req.data, start=1):
+            try:
+                # CsvRowDataAnswer를 딕셔너리로 변환
+                csv_row = csv_row_data.model_dump()
+                
+                # 정답지 데이터로 매핑
+                # texts = map_csv_to_texts(csv_row)
+                texts = map_answer_csv_to_texts(csv_row)
+                
+                # 색인실행
+                result = index_text_to_es(texts, req.model_path, "index_nori_answer")
+
+                results.append({
+                    "index": idx,
+                    "doc_id": result.get("doc_id"),
+                    "status": "success"
+                })
+            except Exception as e:
+                results.append({
+                    "index": idx,
+                    "status": "error",
+                    "error": str(e)
+                })
         
-        # 색인 실행
-        result = index_text_to_es(texts, req.model_path)
-        
+        success_count = sum(1 for r in results if r.get("status") == "success")
         return {
-            "message": "CSV 행 데이터 색인 완료",
-            **result
+            "message": f"CSV 행 데이터 일괄 색인 완료",
+            "total_rows": len(req.data),
+            "success_count": success_count,
+            "error_count": len(req.data) - success_count,
+            "results": results
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
+    
 
 if __name__ == "__main__":
     import uvicorn

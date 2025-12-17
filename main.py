@@ -68,6 +68,16 @@ class CsvRowDataAnswer(BaseModel):
     증권코드: str = ""
 
 
+class CsvRowDataUpdate(BaseModel):
+    """상품 CSV 행 데이터 구조."""
+    uw_no: str = ""
+    종목: str = ""
+    세부종목코드: str = ""
+    세부종목명: str = ""
+    상품코드: str = ""
+    상품명: str = ""
+
+
 class CsvBatchIndexRequest(BaseModel):
     """CSV 행 데이터를 통한 색인 요청 (여러 행)."""
     data: List[CsvRowData]
@@ -77,6 +87,11 @@ class CsvBatchIndexRequestAnswer(BaseModel):
     """정답지 CSV 행 데이터를 통한 색인 요청 (여러 행)."""
     data: List[CsvRowDataAnswer]
     model_path: Optional[str] = None    
+
+class CsvBatchIndexRequestUpdate(BaseModel):
+    """상품 CSV 행 데이터를 통한 색인 요청 (여러 행)."""
+    data: List[CsvRowDataUpdate]
+    model_path: Optional[str] = None  
 
 
 @app.get("/", response_class=FileResponse)
@@ -385,6 +400,36 @@ def map_answer_csv_to_texts(csv_row: dict) -> dict:
     return texts
 
 
+def map_update_csv_to_texts(csv_row: dict) -> dict:
+    """
+    CSV 행을 text1~text5 및 도메인 필드로 매핑.
+    
+    CSV 필드: uw_no,종목,세부종목코드,세부종목명,상품코드,상품명
+    -> 저장 필드: 종목(category_type),세부종목코드(sub_category),세부종목명(sub_category_name),상품코드(product_code),상품명(product_name)
+    """
+    print(f"csv_row > {csv_row}")
+    # 빈 값 처리 및 필드명 매핑
+    uw_no = csv_row.get("uw_no", "").strip()
+    category_type = csv_row.get("종목", "").strip()
+    sub_category = csv_row.get("세부종목코드", "").strip()
+    sub_category_name = csv_row.get("세부종목명", "").strip()
+    product_code = csv_row.get("상품코드", "").strip()
+    product_name = csv_row.get("상품명", "").strip()
+
+    # text1~text5에 매핑 + 도메인 필드 함께 저장
+    texts = {
+        # 검색 및 임베딩을 위한 조합/개별 필드
+        "uw_no": uw_no,
+        "category_type": category_type,
+        "sub_category": sub_category,
+        "sub_category_name": sub_category_name,
+        "product_code": product_code,
+        "product_name": product_name,
+    }
+    # print(f"texts : {texts}")
+    return texts
+
+
 @app.post("/csv_index/batch")
 async def index_csv_rows_batch(req: CsvBatchIndexRequest):
     """CSV 행 데이터를 직접 받아서 색인 (여러 행 일괄 처리)."""
@@ -476,8 +521,9 @@ async def index_csv_rows_batch_answer(req: CsvBatchIndexRequestAnswer):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     
+
 @app.post("/csv_index/batch/update")
-async def update_csv_rows_batch(req: CsvBatchIndexRequestAnswer):
+async def index_csv_rows_batch_update(req: CsvBatchIndexRequestUpdate):
     """uw_no를 기준으로 CSV 행 데이터를 업데이트합니다."""
     try:
         if not req.data:
@@ -492,7 +538,7 @@ async def update_csv_rows_batch(req: CsvBatchIndexRequestAnswer):
                     raise ValueError("'uw_no'가 없는 행은 업데이트할 수 없습니다.")
 
                 # CSV 데이터를 Elasticsearch 문서 형식으로 매핑
-                texts = map_answer_csv_to_texts(csv_row)
+                texts = map_update_csv_to_texts(csv_row)
                 
                 # 업데이트 실행
                 result = update_document_in_es(texts, req.model_path, "index_nori_answer")

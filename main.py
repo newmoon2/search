@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
 
-from es.index import index_text_to_es
+from es.index import index_text_to_es, update_document_in_es
 from es.search import keyword_search, embedding_search, hybrid_search, answer_keyword_search, answer_embedding_search, answer_hybrid_search
 from es.common import INDEX_NAME, es
 
@@ -476,6 +476,47 @@ async def index_csv_rows_batch_answer(req: CsvBatchIndexRequestAnswer):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     
+@app.post("/csv_index/batch/update")
+async def update_csv_rows_batch(req: CsvBatchIndexRequestAnswer):
+    """uw_no를 기준으로 CSV 행 데이터를 업데이트합니다."""
+    try:
+        if not req.data:
+            raise HTTPException(status_code=400, detail="업데이트할 데이터가 없습니다.")
+
+        results = []
+        for idx, csv_row_data in enumerate(req.data, start=1):
+            try:
+                csv_row = csv_row_data.model_dump()
+                
+                if not csv_row.get("uw_no"):
+                    raise ValueError("'uw_no'가 없는 행은 업데이트할 수 없습니다.")
+
+                # CSV 데이터를 Elasticsearch 문서 형식으로 매핑
+                texts = map_answer_csv_to_texts(csv_row)
+                
+                # 업데이트 실행
+                result = update_document_in_es(texts, req.model_path, "index_nori_answer")
+                
+                results.append({
+                    "index": idx,
+                    "uw_no": csv_row.get("uw_no"),
+                    "status": "success",
+                    "result": result
+                })
+            except Exception as e:
+                results.append({"index": idx, "uw_no": csv_row_data.uw_no, "status": "error", "error": str(e)})
+
+        success_count = sum(1 for r in results if r["status"] == "success")
+        return {
+            "message": "CSV 데이터 일괄 업데이트 완료",
+            "total_rows": len(req.data),
+            "success_count": success_count,
+            "error_count": len(req.data) - success_count,
+            "results": results,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 
 if __name__ == "__main__":
     import uvicorn

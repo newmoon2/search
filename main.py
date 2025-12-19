@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from es.index import index_text_to_es, update_document_in_es
-from es.search import keyword_search, embedding_search, hybrid_search, answer_keyword_search, answer_embedding_search, answer_hybrid_search
+from es.search import keyword_search, embedding_search, hybrid_search, answer_keyword_search, answer_embedding_search, answer_hybrid_search, test_embedding_search, test_hybrid_search, test_keyword_search
 from es.common import INDEX_NAME, es
 
 app = FastAPI(title="Search API")
@@ -35,6 +35,20 @@ class SearchRequest(BaseModel):
     search_type: str = "hybrid"
     top_k: int = 5
     model_path: Optional[str] = None
+
+
+class SearchRequestField(BaseModel):
+    search_text: str
+    search_type: str = "hybrid"
+    top_k: int = 5
+    model_path: Optional[str] = None
+    # uw_no : str
+    category_type : str
+    sub_category : str
+    security_code : str
+    security_name : str
+    product_name : str
+    product_code : str
 
 
 class FileIndexRequest(BaseModel):
@@ -237,15 +251,99 @@ async def search(req: SearchRequest):
                 "id": hit.get("_id"),
                 "score": hit.get("_score"),
                 "uw_no": hit["_source"].get("uw_no"),
-                "order_no": hit["_source"].get("order_no"),
+                # "order_no": hit["_source"].get("order_no"),
                 "security_name": hit["_source"].get("security_name"),
                 "security_code": hit["_source"].get("security_code"),
                 "tc_name": hit["_source"].get("tc_name"),
                 "tc_code": hit["_source"].get("tc_code"),
-                "use_yn": hit["_source"].get("use_yn"),
+                # "use_yn": hit["_source"].get("use_yn"),
                 "tc_relation": hit["_source"].get("tc_relation"),
                 "tc_form": hit["_source"].get("tc_form"),
                 "tc_form_code": hit["_source"].get("tc_form_code"),
+                "category_type": hit["_source"].get("category_type"),
+                "sub_category": hit["_source"].get("sub_category"),
+                "sub_category_name": hit["_source"].get("sub_category_name"),
+                "product_code": hit["_source"].get("product_code"),
+                "product_name": hit["_source"].get("product_name"),
+            }
+            for hit in hits
+        ]
+        
+        # 쿼리 body를 JSON 문자열로 변환
+        query_json = json.dumps(query_body, indent=2, ensure_ascii=False)
+
+        # print(f"count: len({results})")
+        # print(f"results: {results}")
+        
+        return {
+            "success": True,
+            "count": len(results),
+            "results": results,
+            "query": query_json
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/search/answer/test")
+async def search(req: SearchRequestField):
+    """
+    정답지 검색 필드별 항목 추가
+    Docstring for search
+    
+    :param req: Description
+    :type req: SearchRequest
+    req.search_type : 검색타입
+    req.search_text : 검색텍스트
+    req.top_k : 상위k개
+
+    - 추가항목 -
+    req.category_type : 종목
+    req.sub_category : 세부종목
+    req.security_code : 증권코드
+    req.security_name : 증권명
+    req.product_name : 상품명
+    req.product_code : 상품코드
+
+    """
+    print(f"req > {req}")
+    try:
+        import json
+        
+        # 검색 타입에 따라 적절한 함수 호출
+        if req.search_type == "keyword":
+            hits, query_body = test_keyword_search(req.search_text, req.top_k, req.model_path, req.category_type, req.sub_category, 
+                                                     req.security_code, req.security_name, req.product_name, req.product_code)
+        elif req.search_type == "embedding":
+            hits, query_body = test_embedding_search(req.search_text, req.top_k, req.model_path, req.category_type, req.sub_category, 
+                                                     req.security_code, req.security_name, req.product_name, req.product_code)
+        else:  # hybrid
+            hits, query_body = test_hybrid_search(req.search_text, req.top_k, req.model_path, req.category_type, req.sub_category, 
+                                                     req.security_code, req.security_name, req.product_name, req.product_code)
+
+        # print(f"search_type : {req.search_type}")
+        # print(f"search_text : {req.search_text}")
+        # print(f"search_type : {req.search_type}")
+        
+        results = [
+            {
+                "id": hit.get("_id"),
+                "score": hit.get("_score"),
+                "uw_no": hit["_source"].get("uw_no"),
+                # "order_no": hit["_source"].get("order_no"),
+                "security_name": hit["_source"].get("security_name"),
+                "security_code": hit["_source"].get("security_code"),
+                "tc_name": hit["_source"].get("tc_name"),
+                "tc_code": hit["_source"].get("tc_code"),
+                # "use_yn": hit["_source"].get("use_yn"),
+                "tc_relation": hit["_source"].get("tc_relation"),
+                "tc_form": hit["_source"].get("tc_form"),
+                "tc_form_code": hit["_source"].get("tc_form_code"),
+                "category_type": hit["_source"].get("category_type"),
+                "sub_category": hit["_source"].get("sub_category"),
+                "sub_category_name": hit["_source"].get("sub_category_name"),
+                "product_code": hit["_source"].get("product_code"),
+                "product_name": hit["_source"].get("product_name"),
             }
             for hit in hits
         ]
@@ -562,6 +660,9 @@ async def index_csv_rows_batch_update(req: CsvBatchIndexRequestUpdate):
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+
 
 
 if __name__ == "__main__":

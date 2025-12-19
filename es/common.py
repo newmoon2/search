@@ -25,6 +25,7 @@ es = Elasticsearch(
     basic_auth=(ES_USER, ES_PASSWORD),
     verify_certs=False,
     ca_certs=None,
+    timeout=60000,
 )
 
 # 모델 캐시 딕셔너리
@@ -135,35 +136,36 @@ def ensure_index(model_path: Optional[str] = None) -> None:
 
     # 인덱스가 없으면 생성
     try:
-        settings = {"index": {"knn": True}}
-        mappings = {
-            "dynamic_templates": [
-                {
-                    "embedding_fields": {
-                        "match_mapping_type": "string",
-                        "path_match": "*_embedding",
-                        "mapping": {
-                            "type": "dense_vector",
-                            "dims": model_dim,
-                            "index": "true",
-                            "similarity": "cosine"
-                        }
-                    }
-                }
-            ],
-            "properties": {
-                "text": {"type": "text"},
-                "embedding": {
-                    "type": "dense_vector",
-                    "dims": model_dim,
-                    "index": True,
-                    "similarity": "cosine",
-                }
-            }
-        }
+        # settings = {"index": {"knn": True}}
+        # mappings = {
+        #     "dynamic_templates": [
+        #         {
+        #             "embedding_fields": {
+        #                 "match_mapping_type": "string",
+        #                 "path_match": "*_embedding",
+        #                 "mapping": {
+        #                     "type": "dense_vector",
+        #                     "dims": model_dim,
+        #                     "index": "true",
+        #                     "similarity": "cosine"
+        #                 }
+        #             }
+        #         }
+        #     ],
+        #     "properties": {
+        #         "text": {"type": "text"},
+        #         "embedding": {
+        #             "type": "dense_vector",
+        #             "dims": model_dim,
+        #             "index": True,
+        #             "similarity": "cosine",
+        #         }
+        #     }
+        # }
 
-        es.indices.create(index=INDEX_NAME, settings=settings, mappings=mappings)
-        print(f"인덱스 '{INDEX_NAME}'가 생성되었습니다 (벡터 차원: {model_dim}).")
+        # es.indices.create(index=INDEX_NAME, settings=settings, mappings=mappings)
+        # print(f"인덱스 '{INDEX_NAME}'가 생성되었습니다 (벡터 차원: {model_dim}).")
+        print(f"인덱스가 없습니다. 인덱스 '{INDEX_NAME}'를 생성해주세요 (벡터 차원: {model_dim}).")
     except Exception as e:
         error_msg = str(e)
         raise ValueError(
